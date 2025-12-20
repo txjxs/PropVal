@@ -43,40 +43,111 @@ def fetch_listings(search_term, page=1, mode="sold"):
         print(f"API Error: {e}")
         return []
 
+
+def clean_listing(raw_listing, mode):
+    """RESPONSIBILITY 4: Clean the data"""
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    
+    # Helper function to safely get values with defaults
+    def safe_get(d, key, default):
+        value = d.get(key)
+        return value if value is not None else default
+    
+    # Extract and clean all fields
+    cleaned = {
+        # Core Features
+        'property_id': str(safe_get(raw_listing, 'id', 'UNKNOWN')),
+        'listing_url': str(safe_get(raw_listing, 'url', 'UNKNOWN')),
+        'price': int(safe_get(raw_listing, 'price', 0)),
+        'bedrooms': int(safe_get(raw_listing, 'beds', 0)),
+        'bathrooms': float(safe_get(raw_listing, 'baths', 0.0)),
+        'sqft': int(safe_get(raw_listing, 'area', 0)),
+        'property_type': str(safe_get(raw_listing, 'homeType', 'UNKNOWN')),
+        'status': str(safe_get(raw_listing, 'status', 'UNKNOWN')),
+        
+        # Location Features
+        'zip_code': str(safe_get(raw_listing.get('address', {}), 'zipcode', 'UNKNOWN')),
+        'city': str(safe_get(raw_listing.get('address', {}), 'city', 'UNKNOWN')),
+        'state': str(safe_get(raw_listing.get('address', {}), 'state', 'UNKNOWN')),
+        'latitude': float(safe_get(raw_listing, 'latitude', 0.0)),
+        'longitude': float(safe_get(raw_listing, 'longitude', 0.0)),
+        'address_full': str(safe_get(raw_listing, 'addressRaw', 'UNKNOWN')),
+        
+        # Market Features
+        'zestimate': int(safe_get(raw_listing, 'zestimate', 0)),
+        'rent_estimate': int(safe_get(raw_listing, 'rentZestimate', 0)),
+        'days_on_market': int(safe_get(raw_listing, 'daysOnZillow', 0)),
+        
+        # Quality Indicators
+        'has_3d_model': bool(safe_get(raw_listing.get('mediaDetails', {}), 'has3DModel', False)),
+        'has_video': bool(safe_get(raw_listing.get('mediaDetails', {}), 'hasVideo', False)),
+        'photo_count': len(raw_listing.get('photos', [])),
+        
+        # Metadata
+        'fetched_date': date_str,
+        'data_source': mode
+    }
+    
+    return cleaned
+
 def save_to_local(data, zip_code, page, mode):
-    """RESPONSIBILITY 2: Save to Hard Drive (NDJSON Format)"""
-    if not data: return None
+    """RESPONSIBILITY 2: Save to Hard Drive (NDJSON Format) - Both Raw and Clean"""
+    if not data: return None, None
     
     date_str = datetime.now().strftime("%Y-%m-%d")
-    folder_path = f"data/{mode}/{zip_code}/{date_str}"
-    os.makedirs(folder_path, exist_ok=True)
     
-    filename = f"{folder_path}/page_{page}.json"
+    # Save RAW data
+    raw_folder = f"data/raw/{mode}/{zip_code}/{date_str}"
+    os.makedirs(raw_folder, exist_ok=True)
+    raw_filename = f"{raw_folder}/page_{page}.json"
     
-    with open(filename, "w") as f:
+    with open(raw_filename, "w") as f:
         for entry in data:
-            # Write each object as a single line
             json.dump(entry, f)
-            f.write('\n') # Newline character
+            f.write('\n')
     
-    print(f"Saved locally: {filename}")
-    return filename
-def upload_to_gcs(local_path, zip_code, page, mode):
-    """RESPONSIBILITY 3: Send to Cloud"""
-    if not local_path: return
+    print(f"Saved raw: {raw_filename}")
+    
+    # Save CLEAN data
+    clean_folder = f"data/clean/{mode}/{zip_code}/{date_str}"
+    os.makedirs(clean_folder, exist_ok=True)
+    clean_filename = f"{clean_folder}/page_{page}.json"
+    
+    with open(clean_filename, "w") as f:
+        for entry in data:
+            cleaned = clean_listing(entry, mode)
+            json.dump(cleaned, f)
+            f.write('\n')
+    
+    print(f"Saved clean: {clean_filename}")
+    
+    return raw_filename, clean_filename
+
+def upload_to_gcs(raw_path, clean_path, zip_code, page, mode):
+    """RESPONSIBILITY 3: Send to Cloud - Both Raw and Clean"""
+    if not raw_path or not clean_path: return
     
     date_str = datetime.now().strftime("%Y-%m-%d")
-    # Cloud Path: raw/sold/22202/2023-12-15/page_1.json
-    blob_name = f"raw/{mode}/{zip_code}/{date_str}/page_{page}.json"
     
     try:
         storage_client = storage.Client.from_service_account_json(GOOGLE_APPLICATION_CREDENTIALS)
         bucket = storage_client.bucket(GOOGLE_CLOUD_STORAGE_BUCKET_NAME)
-        blob = bucket.blob(blob_name)
-        blob.upload_from_filename(local_path)
-        print(f"Uploaded to GCS: {blob_name}")
+        
+        # Upload RAW
+        raw_blob_name = f"raw/{mode}/{zip_code}/{date_str}/page_{page}.json"
+        raw_blob = bucket.blob(raw_blob_name)
+        raw_blob.upload_from_filename(raw_path)
+        print(f"Uploaded raw to GCS: {raw_blob_name}")
+        
+        # Upload CLEAN
+        clean_blob_name = f"clean/{mode}/{zip_code}/{date_str}/page_{page}.json"
+        clean_blob = bucket.blob(clean_blob_name)
+        clean_blob.upload_from_filename(clean_path)
+        print(f"Uploaded clean to GCS: {clean_blob_name}")
+        
     except Exception as e:
         print(f"Upload Error: {e}")
+
 
 def run_pipeline():
     """ORCHESTRATOR: Loops through the config file"""
@@ -96,10 +167,10 @@ def run_pipeline():
         search_term = f"{city}, {state} {zip_code}"
         
         # Fetch 1 page per zip (Testing Mode)
-        listings = fetch_listings(search_term, page=1, mode="sold")
-        local_file = save_to_local(listings, zip_code, page=1, mode="sold")
-        if local_file:
-            upload_to_gcs(local_file, zip_code, page=1, mode="sold")
+        listings = fetch_listings(search_term, page=1, mode="forSale")
+        raw_file, clean_file = save_to_local(listings, zip_code, page=1, mode="forSale")
+        if raw_file and clean_file:
+            upload_to_gcs(raw_file, clean_file, zip_code, page=1, mode="forSale")
         
         # Be polite between zip codes
         time.sleep(2)
