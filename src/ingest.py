@@ -149,16 +149,20 @@ def upload_to_gcs(raw_path, clean_path, zip_code, page, mode):
         print(f"Upload Error: {e}")
 
 
-def run_pipeline():
-    """ORCHESTRATOR: Loops through the config file"""
+def run_pipeline(mode="forSale"):
+    """ORCHESTRATOR: Loops through the config file
+    
+    Args:
+        mode (str): Data type to fetch - "sold" or "forSale"
+    """
     
     # 1. Load the list of zip codes
     with open("config/cities.json", "r") as f:
         locations = json.load(f)
     
-    print(f"Starting Pipeline for {len(locations)} locations...")
+    print(f"Starting Pipeline for {len(locations)} locations in '{mode}' mode...")
 
-    for loc in locations:
+    for loc in locations[1:2]:
         zip_code = loc["zip_code"]
         city = loc["city"]
         state = loc["state"]
@@ -166,14 +170,30 @@ def run_pipeline():
         # Create the search string: "Arlington, VA 22202"
         search_term = f"{city}, {state} {zip_code}"
         
-        # Fetch 1 page per zip (Testing Mode)
-        listings = fetch_listings(search_term, page=1, mode="forSale")
-        raw_file, clean_file = save_to_local(listings, zip_code, page=1, mode="forSale")
+        # Fetch 1 page per zip
+        listings = fetch_listings(search_term, page=1, mode=mode)
+        raw_file, clean_file = save_to_local(listings, zip_code, page=1, mode=mode)
         if raw_file and clean_file:
-            upload_to_gcs(raw_file, clean_file, zip_code, page=1, mode="forSale")
+            upload_to_gcs(raw_file, clean_file, zip_code, page=1, mode=mode)
         
         # Be polite between zip codes
         time.sleep(2)
+    
+    print(f"\n✅ Pipeline complete! Processed {len(locations)} locations in '{mode}' mode")
 
 if __name__ == "__main__":
-    run_pipeline()
+    import sys
+    
+    # Parse command-line arguments
+    if len(sys.argv) > 1:
+        mode = sys.argv[1]
+        if mode not in ["sold", "forSale"]:
+            print(f"Error: Invalid mode '{mode}'. Must be 'sold' or 'forSale'")
+            print("Usage: python src/ingest.py [sold|forSale]")
+            sys.exit(1)
+    else:
+        mode = "forSale"  # Default mode
+        print(f"No mode specified. Using default: '{mode}'")
+        print("Usage: python src/ingest.py [sold|forSale]\n")
+    
+    run_pipeline(mode)
