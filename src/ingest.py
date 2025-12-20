@@ -162,7 +162,7 @@ def run_pipeline(mode="forSale"):
     
     print(f"Starting Pipeline for {len(locations)} locations in '{mode}' mode...")
 
-    for loc in locations[1:2]:
+    for loc in locations:
         zip_code = loc["zip_code"]
         city = loc["city"]
         state = loc["state"]
