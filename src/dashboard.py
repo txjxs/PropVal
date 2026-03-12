@@ -32,22 +32,30 @@ st.set_page_config(
 def get_bq_client():
     """Initializes and caches the BigQuery client."""
     # First, try to load from Streamlit Secrets (for Cloud Deployment)
-    try:
-        from google.oauth2 import service_account
-        import json
-        
-        # Check if the secret exists
-        if "gcp_service_account" in st.secrets:
-            # Parse the JSON string from secrets
-            service_account_info = json.loads(st.secrets["gcp_service_account"])
+    if "gcp_service_account" in st.secrets:
+        try:
+            from google.oauth2 import service_account
+            import json
+            
+            secret_val = st.secrets["gcp_service_account"]
+            # Streamlit secrets sometimes parses TOML tables automatically into dicts
+            if isinstance(secret_val, str):
+                service_account_info = json.loads(secret_val)
+            else:
+                service_account_info = dict(secret_val)
+                
             credentials = service_account.Credentials.from_service_account_info(service_account_info)
             return bigquery.Client(credentials=credentials, project=credentials.project_id)
-    except Exception as e:
-        # st.secrets isn't configured, or we are running locally
-        pass
-        
+        except Exception as e:
+            st.error(f"Error parsing 'gcp_service_account' from Streamlit Secrets: {e}")
+            st.stop()
+            
     # Fallback to local GOOGLE_APPLICATION_CREDENTIALS environment variable
-    return bigquery.Client()
+    try:
+        return bigquery.Client()
+    except Exception as e:
+        st.error(f"Failed to initialize BigQuery client locally. Are your application credentials set? Error: {e}")
+        st.stop()
 
 @st.cache_data(ttl=3600)  # Cache data for 1 hour to prevent excessive BQ queries
 def load_predictions_data():
