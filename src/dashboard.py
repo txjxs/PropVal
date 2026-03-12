@@ -299,6 +299,7 @@ def main():
                 lat="latitude",
                 lon="longitude",
                 color="recommendation",
+                text="recommendation", # Moved text mapping here
                 size_max=15,
                 zoom=12,
                 hover_name="address_full",
@@ -317,10 +318,9 @@ def main():
                 title="Property Opportunities (Zoom/Pan to explore)"
             )
             
-            # Explicitly update traces to show both markers and text
+            # Explicitly update traces to show both markers and text styling
             fig.update_traces(
                 mode='markers+text',
-                text=filtered_df['recommendation'],
                 textposition='top center',
                 textfont=dict(
                     size=12,
