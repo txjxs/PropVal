@@ -74,7 +74,7 @@ def engineer_features(df):
     
     return X, y, feature_cols
 
-def train_model(X, y, feature_cols):
+def train_model(X, y, feature_cols, df):
     """Train Linear Regression model with cross-validation"""
     print("\nTraining model...")
     
@@ -130,7 +130,61 @@ def train_model(X, y, feature_cols):
     print(f"  Mean Residual: ${mean_residual:,.0f}")
     print(f"  Improvement vs Baseline: {naive_mape - mape:.2f} percentage points")
     
+    # Save metrics to BigQuery for MLOps tracking over time
+    log_metrics_to_bq(metrics, len(df))
+    
     return model, metrics
+
+def log_metrics_to_bq(metrics, sample_size):
+    """Log model performance to BigQuery propval_raw.model_metrics"""
+    print("\nLogging metrics to BigQuery...")
+    try:
+        client = bigquery.Client.from_service_account_json(GOOGLE_APPLICATION_CREDENTIALS, project='prop-val')
+        table_id = "prop-val.propval_raw.model_metrics"
+        
+        # Create table if it doesn't exist
+        schema = [
+            bigquery.SchemaField('training_date', 'TIMESTAMP', mode='REQUIRED'),
+            bigquery.SchemaField('model_version', 'STRING', mode='REQUIRED'),
+            bigquery.SchemaField('test_mape', 'FLOAT', mode='REQUIRED'),
+            bigquery.SchemaField('test_rmse', 'FLOAT', mode='REQUIRED'),
+            bigquery.SchemaField('test_r2', 'FLOAT', mode='REQUIRED'),
+            bigquery.SchemaField('cv_mape_mean', 'FLOAT', mode='REQUIRED'),
+            bigquery.SchemaField('training_samples', 'INTEGER', mode='REQUIRED')
+        ]
+        
+        try:
+            client.get_table(table_id)
+        except Exception:
+            # Table does not exist, create it
+            table = bigquery.Table(table_id, schema=schema)
+            client.create_table(table)
+            print("  Created new table propval_raw.model_metrics")
+            
+        # Insert Row
+        timestamp_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        version_str = datetime.now().strftime('%Y%m%d_%H%M')
+        
+        rows_to_insert = [
+            {
+                "training_date": timestamp_str,
+                "model_version": f"propval_linear_{version_str}",
+                "test_mape": float(metrics['test_mape']),
+                "test_rmse": float(metrics['test_rmse']),
+                "test_r2": float(metrics['test_r2']),
+                "cv_mape_mean": float(metrics['cv_mape_mean']),
+                "training_samples": int(sample_size)
+            }
+        ]
+        
+        errors = client.insert_rows_json(table_id, rows_to_insert)
+        if errors == []:
+            print("  Successfully logged metrics to BigQuery.")
+        else:
+            print(f"  Encountered errors while inserting rows: {errors}")
+            
+    except Exception as e:
+        print(f"  WARNING: Failed to log metrics to BigQuery: {e}")
 
 def save_model(model, feature_cols):
     """Save model locally and upload to GCS"""
@@ -183,7 +237,7 @@ def main():
     try:
         df = query_training_data()
         X, y, feature_cols = engineer_features(df)
-        model, metrics = train_model(X, y, feature_cols)
+        model, metrics = train_model(X, y, feature_cols, df)
         save_model(model, feature_cols)
         
         print("\n" + "="*70)
