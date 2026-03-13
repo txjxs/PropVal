@@ -1,5 +1,0 @@
-steps:
-- name: 'gcr.io/cloud-builders/docker'
-  args: [ 'build', '-t', 'us-central1-docker.pkg.dev/prop-val/propval-repo/propval-train', '-f', 'Dockerfile.train', '.' ]
-images:
-- 'us-central1-docker.pkg.dev/prop-val/propval-repo/propval-train'
