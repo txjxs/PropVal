@@ -161,6 +161,10 @@ def geocode_address(address_str, retries=3):
 
     geolocator = Nominatim(user_agent="propval_dashboard_app")
     
+    # Nominatim STRICTLY requires max 1 request per second. 
+    # Since this function is cached, it only sleeps on cache MISSES.
+    time.sleep(1.1)
+    
     for attempt in range(retries):
         try:
             location = geolocator.geocode(search_address, timeout=5)
@@ -168,8 +172,8 @@ def geocode_address(address_str, retries=3):
                 return location.latitude, location.longitude
             else:
                 return None, None
-        except (GeocoderTimedOut, GeocoderServiceError):
-            time.sleep(1) # Backoff
+        except Exception as e:
+            time.sleep(2) # Backoff
             
     return None, None
 
