@@ -1,0 +1,41 @@
+main:
+  steps:
+    - init:
+        assign:
+          - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - location: "us-central1"
+          
+    - run_ingest_forsale:
+        call: googleapis.run.v1.namespaces.jobs.run
+        args:
+          name: ${"namespaces/" + project_id + "/jobs/propval-ingest-forsale"}
+          location: ${location}
+        result: ingest_forsale_result
+        
+    - run_ingest_sold:
+        call: googleapis.run.v1.namespaces.jobs.run
+        args:
+          name: ${"namespaces/" + project_id + "/jobs/propval-ingest-sold"}
+          location: ${location}
+        result: ingest_sold_result
+        
+    - run_train:
+        call: googleapis.run.v1.namespaces.jobs.run
+        args:
+          name: ${"namespaces/" + project_id + "/jobs/propval-train"}
+          location: ${location}
+        result: train_result
+        
+    - run_predict:
+        call: googleapis.run.v1.namespaces.jobs.run
+        args:
+          name: ${"namespaces/" + project_id + "/jobs/propval-predict"}
+          location: ${location}
+        result: predict_result
+        
+    - finish:
+        return:
+          forsale_status: ${ingest_forsale_result}
+          sold_status: ${ingest_sold_result}
+          train_status: ${train_result}
+          predict_status: ${predict_result}

@@ -1,0 +1,27 @@
+# Ignore Secrets and Specific User Files
+*json
+.env
+SCHEMA_DESIGN.md
+SPRINT_TRACKER.md
+test_cleaning.py
+
+# Ignore Virtual Environment
+venv/
+env/
+
+# Ignore MLFlow
+mlruns/
+mlflow.db
+
+# Ignore Data & Models
+data/
+models/
+
+# Ignore Notebooks
+notebooks/
+*.ipynb
+
+# Ignore other python artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
